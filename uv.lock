@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.12.*"
 
 [manifest]
@@ -1479,6 +1479,7 @@ dependencies = [
     { name = "daqp" },
     { name = "fast-simplification" },
     { name = "fastapi" },
+    { name = "gymnasium" },
     { name = "h5py" },
     { name = "mink" },
     { name = "mujoco" },
@@ -1512,6 +1513,7 @@ requires-dist = [
     { name = "daqp", specifier = ">=0.5" },
     { name = "fast-simplification", specifier = ">=0.2.0" },
     { name = "fastapi", specifier = ">=0.110" },
+    { name = "gymnasium", specifier = ">=1.0" },
     { name = "h5py", specifier = ">=3.10" },
     { name = "lerobot", marker = "extra == 'lerobot'" },
     { name = "mink", specifier = ">=0.0.5" },

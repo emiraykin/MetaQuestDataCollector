@@ -21,7 +21,7 @@ from xrcollect.expert import Expert  # noqa: E402
 from xrcollect.protocol import SRC_CONTROLLER, HandInput, InputFrame  # noqa: E402
 from xrcollect.task.loader import load_bundle  # noqa: E402
 
-TASKS = ["tasks/stack_two_blocks", "tasks/duplo_tower", "tasks/open_drawer"]
+TASKS = ["tasks/stack_two_blocks", "tasks/duplo_tower", "tasks/open_drawer", "tasks/stack_cups"]
 
 
 @pytest.fixture

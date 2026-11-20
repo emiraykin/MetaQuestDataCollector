@@ -17,8 +17,9 @@ imitation learning (raw HDF5 or LeRobot), with camera images rendered after the 
   </tr>
 </table>
 
-<sub>The three bundled tasks, solved here by the built-in scripted expert (`xrc validate-task`) on the same control
-stack a human operator uses.</sub>
+<sub>Three of the bundled tasks, solved here by the built-in scripted expert (`xrc validate-task`) on the same control
+stack a human operator uses. A fourth, `stack_cups` (single arm: put the red cup into the green one), is
+mujoco_toy-project's task migrated as a plugin task. Every task is also a [Gymnasium environment](#reinforcement-learning-gymnasium).</sub>
 
 ## Why
 
@@ -103,6 +104,7 @@ React) are thin clients: they draw the scene from streamed body poses and send e
 - [Data format](#data-format)
 - [Exporting](#exporting)
 - [Driving with a policy](#driving-with-a-policy)
+- [Reinforcement learning (Gymnasium)](#reinforcement-learning-gymnasium)
 - [Command reference](#command-reference)
 - [Development](#development)
 
@@ -435,6 +437,31 @@ The control modes:
 
 Policy actions go through the same safety filter. Each recorded step says who drove. A policy can check its
 expected feature layout against the export manifest it was trained on.
+
+## Reinforcement learning (Gymnasium)
+
+Every task is registered as a Gymnasium environment, `xrcollect/<task>-v0`, on the same scene, start-state
+randomization and success check the operator records in (`xrcollect/gym_env.py`):
+
+```python
+import gymnasium as gym
+import xrcollect.gym_env  # registers xrcollect/<task>-v0 for every tasks/<task>/task.yaml
+
+env = gym.make("xrcollect/stack_cups-v0", cameras=["left", "cam_wrist"], image_size=(224, 224))
+obs, info = env.reset(seed=0)
+obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+```
+
+| | |
+| --- | --- |
+| **Action** | per arm `[joint targets (rad), gripper (0 closed, 1 open)]`: the layout of a recording's `action/joint_pos`, so recorded demonstrations are (observation, action) pairs of this env as they are. With `safety=True` (default) actions go through the safety filter, like every recorded action. |
+| **Observation** | `joint_pos`, `joint_vel`, `gripper_width`, `ee_pose`, `ee_wrench`, `objects`, `fixture_joints`, plus `images.<camera>` (uint8) for the cameras you ask for (none by default: fast state-based RL). |
+| **Reward** | `reward="sparse"` (default): 1 on success. `reward="progress"`: plus the share of task stages newly done each step. |
+| **Episode end** | terminates on success, truncates after `max_episode_seconds` (default 30 s at 50 Hz). |
+| **Rewind** | `env.reset(options={"state": s})` starts from a saved simulator state, e.g. a recording's `sim/state[t]`; `env.unwrapped.get_state()` returns the current one. |
+
+A policy trained here runs unchanged in VR through `xrc serve --policy ... --control shared`, where you take over
+with Grip; recorded corrections and demonstrations then feed back into training.
 
 ## Command reference
 

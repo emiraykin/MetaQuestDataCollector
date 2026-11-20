@@ -1,0 +1,38 @@
+# mujoco_toy-project's task, migrated: one Franka and two tapered cups; put the red cup into the green one,
+# anywhere on the table. task.py carries the toy's start-state randomization and its exact stacking check; the
+# predicate below only describes the stage (for the editor and the stage list).
+task: stack_cups
+instruction: "Put the red cup into the green cup."
+embodiment: franka_single
+scene: cups_table
+plugin: task.py:StackCupsTask
+objects:                     # bottom to top
+  green_cup: {asset: cups/cup, rgba: [0.2, 0.7, 0.3, 1], label: green cup}
+  red_cup:   {asset: cups/cup, rgba: [0.9, 0.3, 0.2, 1], label: red cup}
+params:
+  # Start state, as the toy's ManipulationEnv.reset(): the arm at home_q plus uniform noise of total width
+  # arm_noise (rad) per joint, the cups at random spots in a rectangle given relative to the arm base, each at
+  # least min_dist from the cup placed before it.
+  home_q: [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]
+  arm_noise: 0.5
+  spawn: {x: [0.2, 0.6], y: [0.0, 0.5], min_dist: 0.1}
+  # Stacked (the toy's check_cups_stacked): both cups upright (quaternion w >= upright_w, or a rotation mostly
+  # about z), the upper one centred within tol_xy and dz above the lower one.
+  stack: {tol_xy: 0.01, dz: [0.005, 0.05], upright_w: 0.95, upright_axis_z: 0.95}
+  nest_dz: 0.033             # where a nested cup comes to rest (goal picture and the scripted expert)
+stages:
+  - name: red_in_green
+    object: red_cup
+    label: red cup in the green cup
+    when: {relative_pose: {object: red_cup, base: green_cup, pos: [0, 0, 0.0275], yaw_deg: null, tol_pos: 0.0225,
+                           tol_rot_deg: 18}}
+success:
+  all: [{stage: red_in_green}, {not_held: any}, {at_rest: {objects: all, max_speed: 0.02}}]
+events:
+  - {on: stage_reached, cue: placed, toast: "{stage}"}
+  - {on: success, cue: complete}
+goal_view:
+  anchor: green_cup
+  show:
+    - {object: red_cup, pose: {pos: [0, 0, 0.033], yaw: 0}}
+tags: [recovery, slow, tipped over, regrasp]

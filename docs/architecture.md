@@ -115,6 +115,14 @@ without the library files. Everything derived (success, stages, audit verdicts, 
 recomputed from `sim/state`. That is why predicates must be pure functions of the state, and why task state
 outside MuJoCo goes through `extra_state`.
 
+## Gymnasium (`gym_env.py`)
+
+`XRCollectEnv` wraps one `Env` and registers `xrcollect/<task>-v0` for every task folder. `step` = (optional)
+`SafetyFilter` → `Env.apply_action` → `Env.step`, with reward from `Env.success` / `Env.progress`; the action layout
+is a recording's `action/joint_pos`, so demonstrations replay as gym trajectories (`tests/test_gym_env.py`).
+`reset` draws the layout seed from gymnasium's `np_random`; `options={"state": ...}` then applies a saved
+`sim/state` through `Env.set_state`. It adds no task logic of its own: new tasks are gym environments for free.
+
 ## Files that change together
 
 | When you change | Also change |
@@ -137,7 +145,8 @@ outside MuJoCo goes through `extra_state`.
 
 - `uv run --group dev pytest`. Covers task loading and predicates, snap, bit-exact recording and `resim`, the
   runtime (commands, replay, branching, edit ops, hot reload), the safety filter, audit and export, server
-  endpoints, and protocol drift.
+  endpoints, protocol drift, and the Gymnasium wrapper (`check_env` per task, rewind, demos replayed as gym
+  trajectories).
 - `web/e2e/emulated-quest.mjs` (`npm test`). Meta's IWER emulates a Quest 3 in headless Chromium and drives the
   real headset page. It covers:
   - controllers and hands, clutch, gripper, recording buttons;

@@ -39,6 +39,7 @@ uv run xrc audit [--exclude ep.hdf5 --note why]
 uv run xrc export <name> [--exporter hdf5|lerobot] [--cameras a,b|none] [--annotations] [--allow-mixed]
 uv run xrc import-mesh mug.obj kitchen/mug [--scale 0.001]   # -> objects/kitchen/mug.yaml (+ convex pieces)
 uv run xrc codegen [--check]            # regenerate protocol files from xrcollect/wire/schema.json
+uv run python -c "import gymnasium as gym, xrcollect.gym_env; gym.make('xrcollect/stack_cups-v0')"   # any task as a gym env
 
 uv run --group dev pytest                                   # all tests (~1 min); MUJOCO_GL=egl is set by conftest/cli
 uv run --group dev pytest tests/test_task.py::test_name     # single test
@@ -165,6 +166,13 @@ filter → physics → recorder) → binary pose frames back to the headset + JS
 - **Policy hook** (`policy.py`): `PolicyRunner` loaded lazily from `module:Class` / `file.py:Class`; the platform
   imports no ML library. Control modes teleop | policy | shared; while the policy drives the operator side is held
   at the current pose so a Grip takeover never jumps. Loading happens off the sim thread.
+- **Gymnasium** (`gym_env.py`): `XRCollectEnv` wraps `Env` for every task (`xrcollect/<task>-v0`, registered on
+  import). Action = per arm `[joint targets, gripper]` (= recorded `action/joint_pos`), optional safety filter,
+  obs = `Env.observe()` + optional `images.<cam>`, reward sparse or progress, `reset(options={"state": s})`
+  rewinds to a saved `sim/state`. Keep it task-agnostic: no task names in it.
+- **stack_cups** (`tasks/stack_cups/`): mujoco_toy-project's task migrated as a plugin (`task.py`: the toy's
+  start-state randomization and `check_cups_stacked`; `expert.py`: grasp below the rim; cup geometry from
+  `objects/cups/cup.py`, cameras in `scenes/cups_table.yaml`).
 - **Scripted expert** (`expert.py`): keyframed TCP moves on the real stack; generic pick-and-place plan from the
   stages, or a task's own `expert.py` (`def script(expert)`). `xrc validate-task` is the end-to-end check for a task.
 - **Config**: `config.yaml` → pydantic models in `config.py`: platform settings only (server, teleop, ik, record,

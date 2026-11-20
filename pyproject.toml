@@ -19,6 +19,7 @@ dependencies = [
     "pillow>=10.0",
     "daqp>=0.5",
     "fast-simplification>=0.2.0",
+    "gymnasium>=1.0",       # xrcollect.gym_env: every task as a Gymnasium environment (RL)
 ]
 
 [project.optional-dependencies]
