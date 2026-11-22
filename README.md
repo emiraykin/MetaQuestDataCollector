@@ -4,6 +4,44 @@
 MuJoCo with the controllers or your bare hands, and get a lossless, replayable, labelled dataset out, ready for
 imitation learning (raw HDF5 or LeRobot), with camera images rendered after the fact.
 
+## Quick run
+
+**Run it:**
+
+```bash
+./scripts/install.sh          # install everything (once)
+uv run xrc doctor             # check the setup
+uv run xrc serve              # start the server with the default task
+```
+
+Then open the printed URL. On a Quest:
+
+```bash
+uv run xrc setup-quest        # USB: forward the port, then serve as above
+uv run xrc certs              # Wi-Fi: create the HTTPS certificate once, then serve as above
+```
+
+**Optional: edit a task's scene.** Edits rewrite the task file, so work on a copy:
+
+```bash
+mkdir -p scratch
+cp -r tasks/stack_cups scratch/task
+uv run xrc serve --task scratch/task --out scratch/data
+```
+
+- Dashboard: open the **Scene** tab, turn on edit mode, then use the forms or drag cups in the 3D view (W move, E turn).
+- Headset: wrist menu → **Tools → Edit scene**, grab with Trigger, press **Apply**.
+
+Check what changed and whether the task is still solvable:
+
+```bash
+git diff --no-index tasks/stack_cups/task.yaml scratch/task/task.yaml
+uv run xrc validate-task scratch/task --n 5
+```
+
+Note: `stack_cups` is a plugin task. `task.py` places the cups at random spots from `params.spawn` on every reset, so
+moving a cup in the editor doesn't change where it starts. Edit `params` in `task.yaml` instead.
+
 <table>
   <tr>
     <td><img src="docs/media/stack_two_blocks.gif" alt="Two Franka arms stack a blue block on a red block"></td>
