@@ -16,7 +16,7 @@ import mujoco
 import numpy as np
 
 from xrcollect.config import ROOT, rooted
-from xrcollect.scene.constants import (CORE_CONAFFINITY, GEOM_TYPES, HIDDEN_GROUP, RIGID_SOLIMP, RIGID_SOLREF,
+from xrcollect.scene.constants import (CORE_CONAFFINITY, GEOM_TYPES, HIDDEN_GROUP, OPERATOR_GROUP, RIGID_SOLIMP, RIGID_SOLREF,
                                        TAPE_RGBA, TAPE_W, lookat_xyaxes, yaw_quat)
 from xrcollect.task.loader import Bundle
 
@@ -88,6 +88,23 @@ def add_environment(spec: mujoco.MjSpec, scene: dict) -> None:
     for name, c in (scene.get("cameras") or {}).items():
         wb.add_camera(name=name, pos=c["pos"], xyaxes=lookat_xyaxes(c["pos"], c["lookat"]),
                       fovy=float(c.get("fovy", 60)))
+        # Operator-only wireframe pyramid (group 5): visualization of the camera's view frustum
+        pos = np.asarray(c["pos"], float)
+        lookat = np.asarray(c["lookat"], float)
+        fovy = float(c.get("fovy", 60))
+        xyaxes = lookat_xyaxes(list(pos), list(lookat))
+        r, u = np.asarray(xyaxes[:3]), np.asarray(xyaxes[3:])
+        f = lookat - pos
+        f /= np.linalg.norm(f)
+        depth = 0.15
+        half = np.tan(np.deg2rad(fovy) / 2) * depth
+        base_c = pos + f * depth
+        corners = [base_c + sx * half * r + sy * half * u for sx, sy in ((1, 1), (1, -1), (-1, -1), (-1, 1))]
+        edges = [(pos, c) for c in corners] + [(corners[i], corners[(i + 1) % 4]) for i in range(4)]
+        for i, (p, q) in enumerate(edges):
+            wb.add_geom(name=f"{name}_view_{i}", type=mujoco.mjtGeom.mjGEOM_CAPSULE, fromto=[*p, *q],
+                        size=[0.002, 0, 0], rgba=[0.1, 0.3, 0.9, 1], group=OPERATOR_GROUP, contype=0,
+                        conaffinity=0, mass=0)
 
 
 def add_regions(spec: mujoco.MjSpec, regions: dict, th: float) -> None:

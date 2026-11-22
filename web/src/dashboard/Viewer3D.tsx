@@ -56,6 +56,15 @@ export function Viewer3D({ handle }: { handle: React.MutableRefObject<ViewerHand
     mj.setPlacement(Z_UP_TO_Y_UP.toArray());
     scene.add(mj.root);  // App calls reload() once the websocket connects
 
+    // MuJoCo world axes at the origin: red = +x, green = +y, blue = +z (up). Same z-up -> y-up basis as the scene;
+    // drawn on top so the table doesn't hide them.
+    const axes = new THREE.AxesHelper(0.5);
+    axes.matrixAutoUpdate = false;
+    axes.matrix.copy(Z_UP_TO_Y_UP);
+    (axes.material as THREE.Material).depthTest = false;
+    axes.renderOrder = 999;
+    scene.add(axes);
+
     // ---- editor: a proxy object follows the selected body; the gizmo moves the proxy, the proxy sends moves ----
     let editor: ViewerEditor | null = null;
     const proxy = new THREE.Object3D();
@@ -184,5 +193,14 @@ export function Viewer3D({ handle }: { handle: React.MutableRefObject<ViewerHand
     };
   }, [handle]);
 
-  return <div className="viewer" ref={host} />;
+  return (
+    <>
+      <div className="viewer" ref={host} />
+      <div className="axes-legend">
+        <span><i style={{ background: "#ff0000" }} />x · away</span>
+        <span><i style={{ background: "#00ff00" }} />y · left</span>
+        <span><i style={{ background: "#0000ff" }} />z · up</span>
+      </div>
+    </>
+  );
 }
