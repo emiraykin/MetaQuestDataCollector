@@ -42,6 +42,26 @@ uv run xrc validate-task scratch/task --n 5
 Note: `stack_cups` is a plugin task. `task.py` places the cups at random spots from `params.spawn` on every reset, so
 moving a cup in the editor doesn't change where it starts. Edit `params` in `task.yaml` instead.
 
+**Optional: export, look at and train on your episodes.** Recorded takes are in `data/episodes/`.
+
+```bash
+uv sync --extra lerobot --extra train          # once (brings torch); name every extra you want each time
+
+# Export to LeRobot (cup task cameras) -> data/exports/cups_v1
+uv run xrc export cups_v1 --exporter lerobot --cameras left,right,cam_wrist
+
+# Look at episode 0 in Rerun (play the `timestamp` timeline)
+uv run lerobot-dataset-viz --repo-id xrcollect/cups_v1 --root data/exports/cups_v1 --episode-index 0
+
+# Train ACT -> outputs/train/act_cups_v1
+uv run lerobot-train --dataset.repo_id=xrcollect/cups_v1 --dataset.root=data/exports/cups_v1 \
+  --policy.type=act --policy.device=cuda --policy.push_to_hub=false \
+  --batch_size=8 --steps=100000 --save_freq=20000 \
+  --output_dir=outputs/train/act_cups_v1 --job_name=act_cups_v1
+```
+
+Details: [Exporting](#exporting) (frame rate, viewing every episode at once) and [Training a policy](#training-a-policy).
+
 <table>
   <tr>
     <td><img src="docs/media/stack_two_blocks.gif" alt="Two Franka arms stack a blue block on a red block"></td>
@@ -141,6 +161,7 @@ React) are thin clients: they draw the scene from streamed body poses and send e
 - [Writing a task](#writing-a-task)
 - [Data format](#data-format)
 - [Exporting](#exporting)
+- [Training a policy](#training-a-policy)
 - [Driving with a policy](#driving-with-a-policy)
 - [Reinforcement learning (Gymnasium)](#reinforcement-learning-gymnasium)
 - [Command reference](#command-reference)
@@ -180,8 +201,10 @@ Chromium for the headset-free tests), `--all`, `--yes` (no questions), `--no-doc
 
 ```bash
 ./scripts/fetch_assets.sh           # Franka model from mujoco_menagerie -> assets/third_party/
-uv sync                             # add --extra lerobot for the LeRobot exporter (brings torch)
+uv sync                             # add --extra lerobot for the LeRobot exporter + viewer (brings torch)
+                                    # add --extra train for `lerobot-train` (training a policy on an export)
                                     # add --extra mesh for `xrc import-mesh`
+                                    # name every extra you want each time: uv sync drops the others
 (cd web && npm ci && npm run build) # needs Node 20.19+ / 22.12+; the server serves web/dist
 uv run xrc doctor                   # checks assets, EGL, the web build, protocol files, adb
 ```
@@ -456,6 +479,54 @@ varies lighting, colours and camera mounts.</sub></p>
 You can also export from the Data tab. Every export writes `xrcollect_manifest.json`: its feature layout, the
 episodes and spans used, the curate rules and the git commit. Channels that never change are flagged, since a
 policy input normalized by ~0 blows up at run time. The `lerobot` exporter needs `uv sync --extra lerobot`.
+
+**Frame rate.** A dataset has one frame per control tick, so its fps is the scene's `physics.control_hz` (50 by
+default; physics itself steps at 500 Hz). Images are rendered per frame from that frame's state, so cameras and
+joints always line up. To match a robot that runs its policy at another rate (e.g. 25 fps), set `control_hz` in the
+scene before recording: episodes recorded at different rates are different task versions and should not be mixed.
+
+### Looking at a LeRobot export
+
+LeRobot's viewer ([Rerun](https://rerun.io)) shows the camera videos and the joint and action plots of one episode:
+
+```bash
+uv run lerobot-dataset-viz --repo-id xrcollect/my_set --root data/exports/my_set --episode-index 0
+```
+
+To browse every episode in one window, save them as `.rrd` files and open them together:
+
+```bash
+for i in $(seq 0 48); do      # 0 .. number of episodes - 1
+  uv run lerobot-dataset-viz --repo-id xrcollect/my_set --root data/exports/my_set \
+    --episode-index $i --save 1 --output-dir data/exports/my_set_rrd
+done
+uv run rerun data/exports/my_set_rrd/*.rrd
+```
+
+Use `uv run rerun`, not a `rerun` on your PATH (an unrelated Ruby tool has the same name), and no `sudo`. In the
+viewer, play the `timestamp` timeline: `frame_index` plays at the viewer's own rate, not the dataset's fps.
+
+## Training a policy
+
+Training is not part of xrcollect, but a LeRobot export trains with LeRobot directly. For example ACT, on every
+camera in the export:
+
+```bash
+uv sync --extra lerobot --extra train
+uv run lerobot-train \
+  --dataset.repo_id=xrcollect/my_set --dataset.root=data/exports/my_set \
+  --policy.type=act --policy.device=cuda --policy.push_to_hub=false \
+  --batch_size=8 --steps=100000 --save_freq=20000 \
+  --output_dir=outputs/train/act_my_set --job_name=act_my_set
+```
+
+- `--policy.push_to_hub=false`: the default uploads the model to the Hugging Face Hub.
+- Checkpoints land in `outputs/train/<name>/checkpoints/`. Use a new `--output_dir` for each run.
+- Experiment tracking is Trackio (LeRobot 0.7+; the old `--wandb.*` options are gone), off by default: add
+  `--trackio.enable=true` and view it with `uv run trackio show --project lerobot`. Runs stay local.
+- ACT predicts `chunk_size` (default 100) actions at once: 2 s at 50 fps, 4 s at 25 fps.
+- As a rough guide, on an 8 GB laptop GPU with three 224×224 cameras a step at batch size 8 took about 0.1 s and
+  under 2 GB of GPU memory.
 
 ## Driving with a policy
 
