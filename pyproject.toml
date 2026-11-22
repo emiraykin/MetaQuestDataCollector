@@ -25,6 +25,8 @@ dependencies = [
 [project.optional-dependencies]
 # LeRobot dataset export (xrcollect/export/lerobot.py). Brings torch.
 lerobot = ["lerobot[dataset,viz]"]   # LeRobot >= 0.7: [dataset] for LeRobotDataset, [viz] for lerobot-dataset-viz (Rerun)
+# Training policies on an export with `lerobot-train` (accelerate, Trackio). Not used by the platform itself.
+train = ["lerobot[dataset,viz,training]"]
 # `xrc import-mesh`: convex decomposition of arbitrary meshes.
 mesh = ["coacd>=1.0", "trimesh>=4.0"]
 

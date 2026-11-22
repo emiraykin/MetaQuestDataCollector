@@ -287,6 +287,8 @@ def export(
     randomize_visuals: bool = typer.Option(False, help="Vary lights, colours and camera mounts per episode"),
     annotations: bool = typer.Option(False, help="One exported episode per labelled time range"),
     allow_mixed: bool = typer.Option(False, help="Allow episodes from different task versions in one dataset"),
+    fps: Optional[int] = typer.Option(None, help="Dataset frame rate (default: the recording's). Must divide it: "
+                                                 "50 Hz takes export at 50, 25, 10, ..."),
 ):
     """Export a dataset folder through an exporter plugin (camera images are rendered now, from the states)."""
     _headless_gl()
@@ -299,7 +301,7 @@ def export(
         cameras=None if cameras is None else ([] if cameras == "none" else cameras.split(",")),
         image_size=[h, w], state=[s for s in state.split(",") if s], env_state=env_state, action=action,
         action_label=action_label, randomize_visuals=randomize_visuals,
-        segments="annotations" if annotations else "takes")
+        segments="annotations" if annotations else "takes", fps=fps)
     out = cfg.out_dir.parent / "exports" / name
 
     def progress(done: int, total: int) -> None:

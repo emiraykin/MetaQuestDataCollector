@@ -192,6 +192,22 @@ def test_annotation_export_uses_the_label_as_instruction(dataset, tmp_path):
         assert f.attrs["instruction"] == "pick the red block" and f["action"].shape[0] == 200
 
 
+def test_export_at_a_lower_fps_keeps_every_nth_step(dataset, tmp_path):
+    update_curation(dataset, "episode_000000.hdf5", annotations=[{"start": 60, "stop": 260, "label": "pick"}])
+    full = run_export(dataset, tmp_path / "full", "hdf5", layout=FeatureLayout(cameras=[], segments="annotations"))
+    half = run_export(dataset, tmp_path / "half", "hdf5",
+                      layout=FeatureLayout(cameras=[], segments="annotations", fps=full["fps"] // 2))
+    assert half["fps"] == full["fps"] // 2 and half["steps"] == 100 and full["steps"] == 200
+    with h5py.File(tmp_path / "full" / "episode_000000.hdf5") as f, \
+            h5py.File(tmp_path / "half" / "episode_000000.hdf5") as h:
+        assert h.attrs["fps"] == full["fps"] // 2
+        # Frames from steps 60, 62, ...; each action is the last one of its window (steps 61, 63, ...).
+        np.testing.assert_array_equal(h["observation/state"][:], f["observation/state"][0::2])
+        np.testing.assert_array_equal(h["action"][:], f["action"][1::2])
+    with pytest.raises(ValueError, match="must divide"):
+        run_export(dataset, tmp_path / "odd", "hdf5", layout=FeatureLayout(cameras=[], fps=full["fps"] - 1))
+
+
 def test_ee9_is_continuous_across_the_quaternion_sign():
     q = np.array([0.02, 1.0, 0.0, 0.0])
     q /= np.linalg.norm(q)

@@ -57,6 +57,10 @@ class FeatureLayout(BaseModel):
     action_label: Literal["recorded", "executed"] = "executed"  # executed: the targets sent (with any DART drift)
     randomize_visuals: bool = False
     segments: Literal["takes", "annotations"] = "takes"   # annotations: one episode per labelled time range
+    # Dataset frame rate. None = the recording's rate (scene physics.control_hz). Lower rates keep every n-th step
+    # (the recording rate must be a multiple): images and state from that step, the action from the last step of
+    # its window, i.e. the latest target the operator gave before the next frame.
+    fps: int | None = None
 
 
 def rot6d(quat_wxyz: np.ndarray) -> np.ndarray:
@@ -205,19 +209,30 @@ def run_export(episodes_dir: Path, out: Path, exporter: str = "hdf5", rules: Cur
         if arrays is None:
             arrays = episode_arrays(env, meta, data, layout)
             loaded = (seg.path, meta, data, arrays)
+        rec_fps = int(meta["fps"])
+        out_fps = layout.fps or rec_fps
+        if out_fps > rec_fps or rec_fps % out_fps:
+            raise ValueError(f"{seg.path.name}: recorded at {rec_fps} fps; an export can only keep every n-th step, "
+                             f"so its fps must divide {rec_fps} (asked for {out_fps})")
+        stride = rec_fps // out_fps
+        steps = np.arange(seg.start, seg.stop, stride)                    # frames: images, state
+        act_steps = np.minimum(steps + stride - 1, seg.stop - 1)          # latest action within each frame
         if info0 is None:
             names = {"state": state_names(layout, meta), "action": action_names(layout, meta),
                      "env_state": env_state_names(meta)}
-            info0 = {"fps": int(meta["fps"]), "layout": layout.model_dump(), "names": names,
+            info0 = {"fps": out_fps, "layout": layout.model_dump(), "names": names,
                      "cameras": list(renderer.cameras) if renderer else [], "image_size": list(layout.image_size),
                      "robot_type": meta.get("task_yaml") and env.bundle.embodiment.get("name"), "task": meta["task"]}
             sink.begin(out, info0)
-        frames = {name: arr[seg.start:seg.stop].astype(np.float32) for name, arr in arrays.items()}
+        elif out_fps != info0["fps"]:
+            raise ValueError(f"{seg.path.name}: would be exported at {out_fps} fps, the dataset is {info0['fps']} fps")
+        frames = {name: arr[act_steps if name == "action" else steps].astype(np.float32)
+                  for name, arr in arrays.items()}
         if renderer is not None:
             if looks is not None:
                 looks.apply(np.random.default_rng([k, int(meta.get("seed", 0)) % (2**31)]))
             images = {c: [] for c in renderer.cameras}
-            for t in range(seg.start, seg.stop):
+            for t in steps:
                 env.set_state(data["sim/state"][t])
                 for c, img in renderer.render(env.data).items():
                     images[c].append(img)
@@ -228,7 +243,7 @@ def run_export(episodes_dir: Path, out: Path, exporter: str = "hdf5", rules: Cur
             if name in frames:
                 columns.setdefault(name, []).append(frames[name])
         written.append({"file": seg.path.name, "start": seg.start, "stop": seg.stop, "label": seg.label,
-                        "scene_hash": key, "task_version": meta.get("task_version")})
+                        "scene_hash": key, "task_version": meta.get("task_version"), "frames": len(steps)})
         if progress:
             progress(k + 1, len(segments))
     extra = sink.finish() or {}
@@ -244,7 +259,7 @@ def run_export(episodes_dir: Path, out: Path, exporter: str = "hdf5", rules: Cur
         "created_at": datetime.now().isoformat(timespec="seconds"), "git_commit": git_commit(),
         "exporter": exporter, "source_dir": str(episodes_dir), "task": info0["task"], "task_versions": versions,
         "fps": info0["fps"], "layout": layout.model_dump(), "names": names, "cameras": info0["cameras"],
-        "rules": rules.model_dump(), "episodes": len(written), "steps": sum(s["stop"] - s["start"] for s in written),
+        "rules": rules.model_dump(), "episodes": len(written), "steps": sum(s["frames"] for s in written),
         "segments": written, "rejected": rejected, "constant_channels": constant, **extra,
     }
     out.mkdir(parents=True, exist_ok=True)

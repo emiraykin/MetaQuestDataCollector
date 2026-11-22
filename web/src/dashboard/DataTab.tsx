@@ -20,7 +20,8 @@ interface Health {
 type Rules = { include_failures: boolean; max_contact_frac: Record<string, number>; cut_contacts: string[]; contact_margin_s: number;
   trim_idle: boolean; shared_frames: "operator" | "all"; until_stage: number | null; until_stage_tail_s: number; cut_labels: string[] };
 type Layout = { cameras: string[] | null; image_size: [number, number]; state: string[]; env_state: boolean; action: "joint" | "ee";
-  action_label: "recorded" | "executed"; randomize_visuals: boolean; segments: "takes" | "annotations" };
+  action_label: "recorded" | "executed"; randomize_visuals: boolean; segments: "takes" | "annotations";
+  fps: number | null };  // null = the recording's rate (no form field yet: set it with `xrc export --fps`)
 interface Job { state: "running" | "done" | "failed"; done: number; total: number; error: string | null;
   manifest: { episodes: number; steps: number; fps: number; constant_channels: Record<string, string[]>; task_versions: unknown } | null }
 interface Exporters { exporters: string[]; layout: Layout; rules: Rules; jobs: Record<string, Job> }
