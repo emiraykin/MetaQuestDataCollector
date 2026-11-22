@@ -2,7 +2,7 @@
 # What defines the world (robots, scene, objects, task logic) is NOT here: see tasks/, embodiments/, scenes/,
 # objects/. Those are stored with every episode.
 
-task: tasks/stack_two_blocks   # task folder or YAML file; also `xrc serve --task tasks/duplo_tower`
+task: tasks/stack_cups   # task folder or YAML file; also `xrc serve --task tasks/duplo_tower`
 
 teleop:
   mode: controllers          # controllers | hands
