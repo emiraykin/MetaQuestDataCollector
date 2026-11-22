@@ -13,7 +13,7 @@ params:
   # Start state, as the toy's ManipulationEnv.reset(): the arm at home_q plus uniform noise of total width
   # arm_noise (rad) per joint, the cups at random spots in a rectangle given relative to the arm base, each at
   # least min_dist from the cup placed before it.
-  home_q: [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -0.7853]
+  home_q: [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, -2.3562]
   arm_noise: 0.5
   spawn: {x: [0.2, 0.6], y: [0.0, 0.5], min_dist: 0.1}
   # Stacked (the toy's check_cups_stacked): both cups upright (quaternion w >= upright_w, or a rotation mostly
