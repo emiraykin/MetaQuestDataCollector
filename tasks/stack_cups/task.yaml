@@ -7,19 +7,19 @@ embodiment: franka_single
 scene: cups_table
 plugin: task.py:StackCupsTask
 objects:                     # bottom to top
-  green_cup: {asset: cups/cup, rgba: [0.2, 0.7, 0.3, 1], label: green cup}
-  red_cup:   {asset: cups/cup, rgba: [0.9, 0.3, 0.2, 1], label: red cup}
+  green_cup: {asset: cups/ycb_cup_g, rgba: [0.2, 0.7, 0.3, 1], label: green cup}   # YCB 065-g, 8.7 cm
+  red_cup:   {asset: cups/ycb_cup_c, rgba: [0.9, 0.3, 0.2, 1], label: red cup}     # YCB 065-c, 6.5 cm
 params:
   # Start state, as the toy's ManipulationEnv.reset(): the arm at home_q plus uniform noise of total width
   # arm_noise (rad) per joint, the cups at random spots in a rectangle given relative to the arm base, each at
   # least min_dist from the cup placed before it.
-  home_q: [0.0, 0.0, 0.0, -1.57079, 0.0, 1.57079, 0]
-  arm_noise: 0.5
-  spawn: {x: [0.3, 0.8], y: [-0.5, 0.5], min_dist: 0.1}
+  home_q: [0.0, 0.5, 0.0, -1.779, 0.0, 2.3, 0.8]
+  arm_noise: 0.2
+  spawn: {x: [0.5, 0.7], y: [-0.3, 0.3], min_dist: 0.1}
   # Stacked (the toy's check_cups_stacked): both cups upright (quaternion w >= upright_w, or a rotation mostly
   # about z), the upper one centred within tol_xy and dz above the lower one.
   stack: {tol_xy: 0.01, dz: [0.005, 0.05], upright_w: 0.95, upright_axis_z: 0.95}
-  nest_dz: 0.033             # where a nested cup comes to rest (goal picture and the scripted expert)
+  nest_dz: 0.009            # where a nested cup comes to rest (goal picture and the scripted expert)
 stages:
   - name: red_in_green
     object: red_cup

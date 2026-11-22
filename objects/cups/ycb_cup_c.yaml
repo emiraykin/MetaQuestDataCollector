@@ -1,0 +1,213 @@
+# Imported from textured.obj by `xrc import-mesh`: 32 convex collision pieces (CoACD, threshold 0.02), volume 60.9 cm^3.
+label: ycb cup c
+shape: mesh
+size:
+- 0.065
+- 0.0651
+- 0.0666
+mass: 0.03
+friction: 0.8
+rgba:
+- 0.75
+- 0.75
+- 0.78
+- 1
+meshes:
+  visual:
+    file: ycb_cup_c_visual.obj
+  col0:
+    file: ycb_cup_c_col0.obj
+    volume: 5.342968316857703e-07
+  col1:
+    file: ycb_cup_c_col1.obj
+    volume: 5.767815303116571e-06
+  col2:
+    file: ycb_cup_c_col2.obj
+    volume: 8.29203188432682e-07
+  col3:
+    file: ycb_cup_c_col3.obj
+    volume: 2.016896937978405e-06
+  col4:
+    file: ycb_cup_c_col4.obj
+    volume: 3.999622252751237e-06
+  col5:
+    file: ycb_cup_c_col5.obj
+    volume: 1.3081464680533932e-06
+  col6:
+    file: ycb_cup_c_col6.obj
+    volume: 1.8003748864048482e-07
+  col7:
+    file: ycb_cup_c_col7.obj
+    volume: 3.993406306614011e-07
+  col8:
+    file: ycb_cup_c_col8.obj
+    volume: 1.8534919147055245e-06
+  col9:
+    file: ycb_cup_c_col9.obj
+    volume: 4.2563791920381456e-07
+  col10:
+    file: ycb_cup_c_col10.obj
+    volume: 2.161244130704878e-06
+  col11:
+    file: ycb_cup_c_col11.obj
+    volume: 5.023002591100532e-07
+  col12:
+    file: ycb_cup_c_col12.obj
+    volume: 1.491738993619653e-06
+  col13:
+    file: ycb_cup_c_col13.obj
+    volume: 8.938919170539101e-07
+  col14:
+    file: ycb_cup_c_col14.obj
+    volume: 3.4767591083111734e-07
+  col15:
+    file: ycb_cup_c_col15.obj
+    volume: 3.007937699268692e-06
+  col16:
+    file: ycb_cup_c_col16.obj
+    volume: 7.222528322924553e-06
+  col17:
+    file: ycb_cup_c_col17.obj
+    volume: 2.490424027309821e-06
+  col18:
+    file: ycb_cup_c_col18.obj
+    volume: 3.531786432340232e-07
+  col19:
+    file: ycb_cup_c_col19.obj
+    volume: 6.002924211340964e-06
+  col20:
+    file: ycb_cup_c_col20.obj
+    volume: 1.0135901252732003e-06
+  col21:
+    file: ycb_cup_c_col21.obj
+    volume: 3.746245216808839e-07
+  col22:
+    file: ycb_cup_c_col22.obj
+    volume: 9.541454052259682e-06
+  col23:
+    file: ycb_cup_c_col23.obj
+    volume: 9.677768721736691e-07
+  col24:
+    file: ycb_cup_c_col24.obj
+    volume: 3.5598052832153132e-06
+  col25:
+    file: ycb_cup_c_col25.obj
+    volume: 3.8764916304589594e-07
+  col26:
+    file: ycb_cup_c_col26.obj
+    volume: 4.4663904220651807e-07
+  col27:
+    file: ycb_cup_c_col27.obj
+    volume: 3.7284940885656236e-07
+  col28:
+    file: ycb_cup_c_col28.obj
+    volume: 1.1462246656910784e-06
+  col29:
+    file: ycb_cup_c_col29.obj
+    volume: 8.776357503858444e-07
+  col30:
+    file: ycb_cup_c_col30.obj
+    volume: 3.6884375205406497e-07
+  col31:
+    file: ycb_cup_c_col31.obj
+    volume: 5.2401266992472924e-08
+geoms:
+- type: mesh
+  mesh: visual
+  visual: true
+- type: mesh
+  mesh: col0
+  hidden: true
+- type: mesh
+  mesh: col1
+  hidden: true
+- type: mesh
+  mesh: col2
+  hidden: true
+- type: mesh
+  mesh: col3
+  hidden: true
+- type: mesh
+  mesh: col4
+  hidden: true
+- type: mesh
+  mesh: col5
+  hidden: true
+- type: mesh
+  mesh: col6
+  hidden: true
+- type: mesh
+  mesh: col7
+  hidden: true
+- type: mesh
+  mesh: col8
+  hidden: true
+- type: mesh
+  mesh: col9
+  hidden: true
+- type: mesh
+  mesh: col10
+  hidden: true
+- type: mesh
+  mesh: col11
+  hidden: true
+- type: mesh
+  mesh: col12
+  hidden: true
+- type: mesh
+  mesh: col13
+  hidden: true
+- type: mesh
+  mesh: col14
+  hidden: true
+- type: mesh
+  mesh: col15
+  hidden: true
+- type: mesh
+  mesh: col16
+  hidden: true
+- type: mesh
+  mesh: col17
+  hidden: true
+- type: mesh
+  mesh: col18
+  hidden: true
+- type: mesh
+  mesh: col19
+  hidden: true
+- type: mesh
+  mesh: col20
+  hidden: true
+- type: mesh
+  mesh: col21
+  hidden: true
+- type: mesh
+  mesh: col22
+  hidden: true
+- type: mesh
+  mesh: col23
+  hidden: true
+- type: mesh
+  mesh: col24
+  hidden: true
+- type: mesh
+  mesh: col25
+  hidden: true
+- type: mesh
+  mesh: col26
+  hidden: true
+- type: mesh
+  mesh: col27
+  hidden: true
+- type: mesh
+  mesh: col28
+  hidden: true
+- type: mesh
+  mesh: col29
+  hidden: true
+- type: mesh
+  mesh: col30
+  hidden: true
+- type: mesh
+  mesh: col31
+  hidden: true
