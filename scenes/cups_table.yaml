@@ -5,6 +5,6 @@ name: cups_table
 physics: {dt: 0.002, control_hz: 50, impratio: 10}   # 500 Hz physics, 50 Hz control + recording
 table: {center: [0.4, 0.0], half: [0.55, 0.75], height: 0.75, rgba: [0.32, 0.27, 0.23, 1], friction: 1.0}
 cameras:
-  left: {pos: [1.35, -0.9, 1.75], lookat: [0.239, 0.053, 0.957], fovy: 50}
-  right: {pos: [1.35, 0.9, 1.75], lookat: [0.239, -0.053, 0.957], fovy: 50}
+  left: {pos: [1.15, -0.65, 1.6], lookat: [0.239, 0.053, 0.78], fovy: 50}
+  right: {pos: [1.15, 0.65, 1.6], lookat: [0.239, -0.053, 0.78], fovy: 50}
 props: []
