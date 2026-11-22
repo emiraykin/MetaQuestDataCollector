@@ -91,8 +91,24 @@ class FrankaAdapter:
                       pos=[0, 0, TCP_OFFSET], rgba=[1, 1, 1, 1], group=OPERATOR_GROUP, contype=0, conaffinity=0,
                       mass=0)
         cam_pos = list(WRIST_CAM_POS)
-        hand.add_camera(name="wrist_cam", pos=cam_pos, xyaxes=lookat_xyaxes(cam_pos, [0, 0, 0.16], up=[1, 0, 0]),
-                        fovy=80)
+        target = [0, 0, 0.16]
+        xyaxes = lookat_xyaxes(cam_pos, target, up=[1, 0, 0])
+        hand.add_camera(name="wrist_cam", pos=cam_pos, xyaxes=xyaxes, fovy=80)
+        # Operator-only wireframe pyramid (group 5, no collisions): the wrist camera's view frustum, 12 cm deep, so
+        # you can see where it points. The recorded cameras render groups 0-2 and don't see it.
+        r, u = np.asarray(xyaxes[:3]), np.asarray(xyaxes[3:])
+        f = np.asarray(target, float) - np.asarray(cam_pos, float)
+        f /= np.linalg.norm(f)
+        depth = 0.12
+        half = np.tan(np.deg2rad(80) / 2) * depth
+        apex = np.asarray(cam_pos, float)
+        base_c = apex + f * depth
+        corners = [base_c + sx * half * r + sy * half * u for sx, sy in ((1, 1), (1, -1), (-1, -1), (-1, 1))]
+        edges = [(apex, c) for c in corners] + [(corners[i], corners[(i + 1) % 4]) for i in range(4)]
+        for i, (p, q) in enumerate(edges):
+            hand.add_geom(name=f"wrist_cam_view_{i}", type=mujoco.mjtGeom.mjGEOM_CAPSULE, fromto=[*p, *q],
+                          size=[0.002, 0, 0], rgba=[0.1, 0.3, 0.9, 1], group=OPERATOR_GROUP, contype=0,
+                          conaffinity=0, mass=0)
         yaw = np.deg2rad(a.get("yaw_deg", 0.0))
         frame = spec.worldbody.add_frame(pos=list(a["pos"]), quat=[np.cos(yaw / 2), 0, 0, np.sin(yaw / 2)])
         spec.attach(panda, prefix=f"{arm}_", frame=frame)
