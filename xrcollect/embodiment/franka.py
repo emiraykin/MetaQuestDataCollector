@@ -81,7 +81,7 @@ class FrankaAdapter:
                     panda.delete(g)
                     continue
                 if g.contype:
-                    g.friction = [1.5, 0.01, 0.001]
+                    g.friction = [1.0, 0.01, 0.001]
                     g.condim, g.priority, g.solref = 4, 2, [0.004, 1]
         hand = panda.body("hand")
         hand.add_site(name="tcp", pos=[0, 0, TCP_OFFSET], size=[0.006, 0.006, 0.006], rgba=[0, 1, 1, 0.0], group=4)
