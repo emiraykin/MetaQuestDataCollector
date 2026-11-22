@@ -278,7 +278,7 @@ def export(
     exporter: str = typer.Option("hdf5", help="hdf5 | lerobot"),
     config: Optional[Path] = typer.Option(None, help="YAML config (default: config.yaml)"),
     cameras: Optional[str] = typer.Option(None, help="Comma-separated camera names; 'none' = no images"),
-    size: str = typer.Option("240x320", help="Image height x width"),
+    size: str = typer.Option("224x224", help="Image height x width"),
     state: str = typer.Option("joint_pos,gripper_width", help="Proprioception channels: joint_pos, gripper_width, "
                                                               "joint_vel, ee_pose, ee_wrench"),
     env_state: bool = typer.Option(False, help="Also export object poses (privileged: simulation only)"),

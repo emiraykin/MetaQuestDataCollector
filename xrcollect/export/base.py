@@ -46,7 +46,7 @@ class FeatureLayout(BaseModel):
     """What a policy sees and outputs. Stored in every dataset's manifest; a policy runner declares the same
     fields and is refused when they don't match the scene (policy.load_policy)."""
     cameras: list[str] | None = None            # None = every camera of the scene; [] = no images
-    image_size: list[int] = Field(default_factory=lambda: [240, 320])   # height, width
+    image_size: list[int] = Field(default_factory=lambda: [224, 224])   # height, width
     # Proprioception channels, an explicit choice per dataset (everything is recorded; export selectively).
     # joint_vel is off by default: with joint-position targets the target leads the measured joints by the
     # servo lag, a policy can copy the velocity and the closed loop drifts.
