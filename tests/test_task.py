@@ -131,6 +131,21 @@ def test_spawn_stays_in_its_region_and_differs_per_seed():
     assert np.array_equal(env.reset(3)["objects"], env.reset(3)["objects"])
 
 
+def test_nested_cups_count_whichever_way_they_are_turned():
+    env = get_env("tasks/stack_cups")
+    env.reset(0)
+    th, dz = env.table_height, env.bundle.task["params"]["nest_dz"]
+    put(env, "green_cup", [0.55, -0.25, th], yaw=0.4)
+    for yaw in (0.0, 1.6, -1.6, -2.4, 3.1):            # the toy's quaternion test failed clockwise turns
+        put(env, "red_cup", [0.55, -0.25, th + dz], yaw=yaw)
+        assert env.stage_flags()[0], yaw
+    a = env.world.qadr["red_cup"]
+    tilt = np.radians(30)
+    env.data.qpos[a + 3:a + 7] = [np.cos(tilt / 2), np.sin(tilt / 2), 0, 0]   # leaning on the rim
+    mujoco.mj_forward(env.model, env.data)
+    assert not env.stage_flags()[0]
+
+
 def test_progress_counts_stages_in_order():
     env = get_env("tasks/stack_two_blocks")
     env.reset(0)

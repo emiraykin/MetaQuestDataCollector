@@ -2,7 +2,8 @@
 
 - Start state: the toy's `reset_arm` (home pose plus uniform joint noise) and `reset_object_positions` (cups at
   random spots in a rectangle in front of the arm base, each at least min_dist from the one placed before it).
-- Stages: the toy's `check_cups_stacked`, for every cup on the one below it (cups are listed bottom to top).
+- Stages: the toy's `check_cups_stacked`, for every cup on the one below it (cups are listed bottom to top), with
+  upright measured as tilt from vertical: the toy's quaternion test failed cups turned clockwise about their axis.
 """
 
 import numpy as np
@@ -47,18 +48,12 @@ class StackCupsTask(DeclarativeTask):
 
     # -- stages --------------------------------------------------------------------------------------
     def cups_stacked(self, data, lower: str, upper: str) -> bool:
-        """The toy's check: both cups upright, the upper one centred on the lower one and resting inside it."""
+        """Both cups upright, the upper one centred on the lower one and resting inside it. Upright is the tilt of
+        the cup's axis from vertical, so a cup turned about its own axis (either way) still counts."""
         S, w = self.params["stack"], self.world
         lo, up = w.body[lower], w.body[upper]
-        for b in (lo, up):
-            q = np.array(data.xquat[b])
-            if q[0] < 0:          # q and -q are the same rotation
-                q = -q
-            if q[0] >= S["upright_w"]:
-                continue          # almost no rotation from upright
-            axis = q[1:4] / np.sqrt(1 - q[0] ** 2)
-            if axis[2] >= S["upright_axis_z"]:
-                continue          # a rotation about z is fine
+        cos_max = np.cos(np.radians(S["max_tilt_deg"]))
+        if any(data.xmat[b][8] < cos_max for b in (lo, up)):   # xmat[8]: z of the body's z axis
             return False
         d = data.xpos[up] - data.xpos[lo]
         return bool(np.all(np.abs(d[:2]) <= S["tol_xy"]) and S["dz"][0] <= d[2] <= S["dz"][1])
