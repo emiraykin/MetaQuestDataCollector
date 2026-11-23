@@ -25,6 +25,11 @@ the headset, the dashboard, a controller button or a test, becomes a command:
 Commands are queued and run at the start of the next tick. Exports and the audit rebuild their own `Env` from each
 episode (`env_from_episode`), on worker threads.
 
+`xrc rollout` runs a `PolicyRunner` without the server: its own `Env` per task, the same safety filter and
+`recorder.control_step` as a live tick, start layouts from `stream_seed("eval", i)`. The bundled
+`policies/lerobot.py:LeRobotRunner` builds its inputs with `export.base.observation_arrays` and `CameraRenderer`
+(the exporter's own code) and reads the layout and fps from the export manifest. See [training.md](training.md).
+
 ## The control tick
 
 One tick = 1/50 s of sim time, in this order (`runtime.py` docstring):
@@ -136,6 +141,7 @@ is a recording's `action/joint_pos`, so demonstrations replay as gym trajectorie
 | a sound or haptic cue name | `config._default_cues`, `runtime.DEFAULT_EVENT_CUES`, `web/src/xr/sounds.ts` |
 | a contact kind | `env.CONTACT_KINDS`, the curate config (`max_contact_frac`, `cut_contacts`), the Data tab |
 | curation rules | `audit.why_not` / `select` / `kept_spans` only: the review card, Episodes tab and exporters all call them |
+| what goes into an exported state / image | `export.base.observation_arrays` / `CameraRenderer` only: `LeRobotRunner` builds a policy's live input with them |
 | an exporter | a class with `begin` / `add_episode` / `finish`, registered in `export/base.EXPORTERS` |
 | a headset panel | create it in `xr/main.ts`, register world panels with `layout.add`, expose it on `window.__xrc` for e2e |
 | a setup step (extra, fetched asset, build step, Node or Python requirement) | `scripts/install.sh`, the README Quick start and its manual-install block, the CLAUDE.md command list, `xrc doctor` if it can be checked |

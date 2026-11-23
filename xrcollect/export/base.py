@@ -107,19 +107,29 @@ def env_state_names(meta: dict) -> list[str]:
            list(meta.get("fixture_joints", []))
 
 
-def episode_arrays(env, meta: dict, data: dict, layout: FeatureLayout) -> dict[str, np.ndarray]:
-    """state, action (and env_state) for every step of one episode, in the layout's channels."""
-    n = len(data["time"])
+def observation_arrays(obs: dict, layout: FeatureLayout, n: int) -> dict[str, np.ndarray]:
+    """state (and env_state) of n steps in the layout's channels. obs: `Env.observe()` channels with a leading step
+    axis (a recording's obs/*, or one live step for a policy runner), so training and run time see the same input."""
     parts = []
     for ch in layout.state:
         if ch == "ee_pose":
-            parts.append(ee9(data["obs/ee_pose"]).reshape(n, -1))
+            parts.append(ee9(obs["ee_pose"]).reshape(n, -1))
         elif ch == "ee_wrench":
-            w = data["obs/ee_wrench"]
+            w = obs["ee_wrench"]
             parts.append((np.sign(w) * np.log1p(np.abs(w) / WRENCH_SCALE)).reshape(n, -1))
         else:
-            parts.append(np.asarray(data[f"obs/{ch}"]).reshape(n, -1))
+            parts.append(np.asarray(obs[ch]).reshape(n, -1))
     out = {"state": np.concatenate(parts, 1) if parts else np.zeros((n, 0))}
+    if layout.env_state:
+        out["env_state"] = np.concatenate([np.asarray(obs["objects"]).reshape(n, -1),
+                                           np.asarray(obs["fixture_joints"]).reshape(n, -1)], 1)
+    return out
+
+
+def episode_arrays(env, meta: dict, data: dict, layout: FeatureLayout) -> dict[str, np.ndarray]:
+    """state, action (and env_state) for every step of one episode, in the layout's channels."""
+    n = len(data["time"])
+    out = observation_arrays({k[4:]: v for k, v in data.items() if k.startswith("obs/")}, layout, n)
     J = env.b.n_joints
     q, grip = split_action(data["action/joint_pos"], J)
     if layout.action_label == "executed":
@@ -128,9 +138,6 @@ def episode_arrays(env, meta: dict, data: dict, layout: FeatureLayout) -> dict[s
         out["action"] = np.stack([join_action(q[t], grip[t], J) for t in range(n)])
     else:
         out["action"] = np.concatenate([ee9(env.tcp_poses_at(q)).reshape(n, -1), grip], 1)
-    if layout.env_state:
-        out["env_state"] = np.concatenate([data["obs/objects"].reshape(n, -1),
-                                           data["obs/fixture_joints"].reshape(n, -1)], 1)
     return out
 
 

@@ -53,14 +53,19 @@ uv run xrc export cups_v1 --exporter lerobot --cameras left,right,cam_wrist
 # Look at episode 0 in Rerun (play the `timestamp` timeline)
 uv run lerobot-dataset-viz --repo-id xrcollect/cups_v1 --root data/exports/cups_v1 --episode-index 0
 
-# Train ACT -> outputs/train/act_cups_v1
+# Train ACT -> outputs/train/act_cups_v1 (10% of the episodes held out for eval_loss)
 uv run lerobot-train --dataset.repo_id=xrcollect/cups_v1 --dataset.root=data/exports/cups_v1 \
+  --dataset.eval_split=0.1 --eval_steps=2000 \
   --policy.type=act --policy.device=cuda --policy.push_to_hub=false \
   --batch_size=8 --steps=100000 --save_freq=20000 \
   --output_dir=outputs/train/act_cups_v1 --job_name=act_cups_v1
+
+# Success rate of a checkpoint on 20 fresh start layouts, headless
+uv run xrc rollout xrcollect.policies.lerobot:LeRobotRunner --policy-arg checkpoint=outputs/train/act_cups_v1 --n 20
 ```
 
-Details: [Exporting](#exporting) (frame rate, viewing every episode at once) and [Training a policy](#training-a-policy).
+Details: [Exporting](#exporting) (frame rate, viewing every episode at once), [Training a policy](#training-a-policy)
+and [docs/training.md](docs/training.md) (losses, validation split, comparing checkpoints).
 
 <table>
   <tr>
@@ -168,7 +173,7 @@ React) are thin clients: they draw the scene from streamed body poses and send e
 - [Development](#development)
 
 Developers: see [docs/architecture.md](docs/architecture.md) for threads, the control tick, the wire protocol and
-the HTTP endpoints.
+the HTTP endpoints. Training and evaluating a policy, step by step: [docs/training.md](docs/training.md).
 
 ## Quick start
 
@@ -523,6 +528,9 @@ uv run lerobot-train \
 ```
 
 - `--policy.push_to_hub=false`: the default uploads the model to the Hugging Face Hub.
+- Add `--dataset.eval_split=0.1 --eval_steps=2000` to hold out 10% of the episodes (whole episodes, the last ones
+  by index) and log `eval_loss` on them. It's open-loop, so use it to spot overfitting and success rate to judge
+  the policy.
 - Checkpoints land in `outputs/train/<name>/checkpoints/`. Use a new `--output_dir` for each run.
 - Experiment tracking is Trackio (LeRobot 0.7+; the old `--wandb.*` options are gone), off by default: add
   `--trackio.enable=true` and view it with `uv run trackio show --project lerobot`. Runs stay local.
@@ -530,14 +538,29 @@ uv run lerobot-train \
 - As a rough guide, on an 8 GB laptop GPU with three 224×224 cameras a step at batch size 8 took about 0.1 s and
   under 2 GB of GPU memory.
 
+Then measure the success rate of each checkpoint in sim, headless, on start layouts that are never in the recorded
+data and are the same for every run:
+
+```bash
+uv run xrc rollout xrcollect.policies.lerobot:LeRobotRunner \
+  --policy-arg checkpoint=outputs/train/act_my_set/checkpoints/040000 \
+  --n 20 --out outputs/eval/act_my_set/040000.json      # --save <dir>: episode files, --video <dir>: MP4s
+```
+
+What each loss means, how to read the held-out loss, and the runner's options are in
+[docs/training.md](docs/training.md).
+
 ## Driving with a policy
 
 A policy runner is any class with `reset(env)` and `act(env) -> (joint targets, grippers)`; see
-`xrcollect/policy.py`. xrcollect imports no ML library itself. Load a runner at start-up, or from the Policy tab:
+`xrcollect/policy.py`. xrcollect imports no ML library itself; the bundled `LeRobotRunner`
+(`xrcollect/policies/lerobot.py`) imports LeRobot only when it's loaded, and runs a LeRobot checkpoint with the
+inputs its export was built with. Load a runner at start-up, or from the Policy tab (ref plus JSON args):
 
 ```bash
-uv run xrc serve --policy my_pkg.policies:Runner              # or path/to/file.py:Runner
-uv run xrc serve --policy my_pkg.policies:Runner --control shared
+uv run xrc serve --policy xrcollect.policies.lerobot:LeRobotRunner \
+  --policy-arg checkpoint=outputs/train/act_my_set --control shared
+uv run xrc serve --policy my_pkg.policies:Runner              # your own; or path/to/file.py:Runner
 ```
 
 The control modes:
@@ -578,7 +601,7 @@ with Grip; recorded corrections and demonstrations then feed back into training.
 
 | Command | |
 | --- | --- |
-| `xrc serve` | the server (`--task`, `--mode`, `--config`, `--out`, `--no-https`, `--policy`, `--control`) |
+| `xrc serve` | the server (`--task`, `--mode`, `--config`, `--out`, `--no-https`, `--policy`, `--policy-arg`, `--control`) |
 | `xrc setup-quest` / `xrc certs` | USB port forward / TLS certificate for Wi-Fi |
 | `xrc doctor` | environment checklist |
 | `xrc tasks` / `xrc view [task]` | list tasks / open a task in a viewer |
@@ -586,6 +609,7 @@ with Grip; recorded corrections and demonstrations then feed back into training.
 | `xrc replay` / `inspect` / `resim <ep.hdf5>` | watch / summarize / bit-exact re-simulation check |
 | `xrc audit` | dataset verdicts; `--exclude ep.hdf5 --note why` |
 | `xrc export <name>` | build a dataset (`--exporter`, `--cameras`, `--fps`, `--annotations`, `--allow-mixed`) |
+| `xrc rollout <runner>` | a policy's success rate on fresh layouts, headless (`--policy-arg`, `--n`, `--seconds`, `--save`, `--video`, `--out`) |
 | `xrc import-mesh <file> <asset>` | mesh → object library entry |
 | `xrc codegen [--check]` | regenerate the wire-protocol files |
 
@@ -601,7 +625,7 @@ web/src/dashboard/  desktop dashboard (React): Record, Episodes, Policy, Scene, 
 embodiments/ scenes/ objects/ tasks/   the four task layers
 tests/              pytest suite
 web/e2e/            headset-free end-to-end tests (emulated Quest 3) and the README screenshots
-docs/               architecture.md, media/
+docs/               architecture.md, training.md, media/
 ```
 
 - Tests: `uv run --group dev pytest` (about a minute), and `cd web && npm run typecheck`.

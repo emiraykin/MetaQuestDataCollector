@@ -36,6 +36,19 @@ def lan_ip() -> str:
         s.close()
 
 
+def _policy_args(pairs: list[str]) -> dict:
+    """["checkpoint=outputs/x", "n_action_steps=50"] -> {"checkpoint": "outputs/x", "n_action_steps": 50}."""
+    import yaml
+
+    out = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not sep or not key:
+            raise typer.BadParameter(f"expected key=value, got {pair!r}")
+        out[key.strip()] = yaml.safe_load(value)
+    return out
+
+
 @app.command()
 def serve(
     config: Optional[Path] = typer.Option(None, help="YAML config (default: config.yaml)"),
@@ -44,6 +57,7 @@ def serve(
     https: bool = typer.Option(True, help="Also serve HTTPS for Wi-Fi (needs `xrc certs`)"),
     policy: Optional[str] = typer.Option(None, help="A PolicyRunner to drive the arms: module:Class or file.py:Class"),
     control: Optional[str] = typer.Option(None, help="teleop | policy | shared (default with --policy: shared)"),
+    policy_arg: list[str] = typer.Option([], help="key=value for the runner's constructor (repeatable)"),
     out: Optional[str] = typer.Option(None, help="Recording folder (default: record.out_dir)"),
 ):
     """Run the sim, teleop server, and web clients."""
@@ -61,6 +75,7 @@ def serve(
         cfg.record.out_dir = out
     if policy:
         cfg.control.policy = policy
+        cfg.control.policy_args.update(_policy_args(policy_arg))
         cfg.control.mode = control or ("shared" if cfg.control.mode == "teleop" else cfg.control.mode)
     elif control:
         cfg.control.mode = control
@@ -353,6 +368,113 @@ def validate_task(
             ex.save(next_episode_path(rooted(save)), success=ok)
     if not ok_all:
         raise typer.Exit(1)
+
+
+def _write_mp4(path: Path, frames: list, fps: float) -> None:
+    """RGB frames (H, W, 3) uint8 -> H.264 MP4 through the ffmpeg binary."""
+    if shutil.which("ffmpeg") is None:
+        raise typer.BadParameter("--video needs ffmpeg on PATH")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    h, w = frames[0].shape[:2]
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}",
+                    "-r", f"{fps:g}", "-i", "-", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "23", str(path)],
+                   input=b"".join(f.tobytes() for f in frames), check=True)
+
+
+@app.command()
+def rollout(
+    policy: str = typer.Argument(..., help="A PolicyRunner: module:Class or file.py:Class"),
+    policy_arg: list[str] = typer.Option([], help="key=value for the runner's constructor (repeatable)"),
+    task: Optional[str] = typer.Option(None, help="Task folder or file (default: config task)"),
+    n: int = typer.Option(20, help="Episodes: start layouts of the `eval` stream, never in recorded data"),
+    seconds: float = typer.Option(40.0, help="Time limit per episode"),
+    safety: bool = typer.Option(True, help="Filter the policy's targets through the safety filter, as live"),
+    save: Optional[Path] = typer.Option(None, help="Folder to save the rollouts into (replay with xrc replay)"),
+    video: Optional[Path] = typer.Option(None, help="Folder for one MP4 per episode (needs ffmpeg)"),
+    video_cameras: Optional[str] = typer.Option(None, help="Cameras side by side in the videos (default: all)"),
+    out: Optional[Path] = typer.Option(None, help="Write the results as JSON"),
+    config: Optional[Path] = typer.Option(None, help="YAML config (default: config.yaml)"),
+):
+    """Run a policy on fresh start layouts without a headset and report its success rate."""
+    _headless_gl()
+    import json
+
+    import numpy as np
+
+    from xrcollect.env import Env, stream_seed
+    from xrcollect.policy import load_policy
+    from xrcollect.recorder import SOURCE_POLICY, control_step, episode_meta, next_episode_path, snapshot, write_episode
+    from xrcollect.safety import SafetyFilter
+    from xrcollect.task.loader import load_bundle
+
+    cfg = load_config(config)
+    env = Env(load_bundle(rooted(task or cfg.task)))
+    runner = load_policy(policy, env, **_policy_args(policy_arg))
+    filt = SafetyFilter(env.bundle, env.adapter, cfg.ik, cfg.safety, env.control_dt) if safety else None
+    max_steps = max(1, round(seconds / env.control_dt))
+    stages = len(env.task.stage_names)
+    recorder = None
+    if video is not None:
+        from xrcollect.scene.render import CameraRenderer
+
+        cams = env.camera_names if video_cameras is None else video_cameras.split(",")
+        recorder = CameraRenderer(env.model, 240, 320, cams)
+        video_every = max(1, round(env.control_hz / 25))
+    typer.echo(f"{runner.name} on {env.task.name} (version {env.bundle.version}): {n} episodes, {seconds:g} s each")
+    results = []
+    try:
+        for i in range(n):
+            seed = stream_seed("eval", i)
+            env.reset(seed)
+            if filt is not None:
+                filt.reset(env.arm_q)
+            runner.reset(env)
+            steps, success, best = [], False, 0
+            frames = []
+            t0 = time.perf_counter()
+            for t in range(max_steps):
+                if recorder is not None and t % video_every == 0:
+                    frames.append(np.concatenate(list(recorder.render(env.data).values()), axis=1))
+                q, grippers = runner.act(env)
+                q, grippers = np.asarray(q, float), np.asarray(grippers, float)
+                corr = 0.0
+                if filt is not None:
+                    q, corr = filt.filter(q, env.arm_q, env.data.qpos[env.b.finger_qadr])
+                before = snapshot(env) if save is not None else None
+                ee = filt.tcp_poses(q) if filt is not None else env.tcp_poses()
+                step, success, progress = control_step(env, before, q, grippers, ee, None, SOURCE_POLICY,
+                                                       correction=corr)
+                best = max(best, progress)
+                if step is not None:
+                    steps.append(step)
+                if success:
+                    break
+            took = (t + 1) * env.control_dt
+            results.append({"episode": i, "seed": seed, "success": success, "seconds": round(took, 2),
+                            "progress": int(best), "stages": stages,
+                            "wall_s": round(time.perf_counter() - t0, 1)})
+            typer.secho(f"  {i:3d}  seed {seed:10d}  {'success' if success else 'fail   '}  {took:5.1f} s  "
+                        f"stages {best}/{stages}", fg="green" if success else "red")
+            if save is not None:
+                meta = episode_meta(cfg, env, len(steps), success, operator=runner.name, source="policy")
+                write_episode(next_episode_path(rooted(save)), steps, meta)
+            if frames:
+                _write_mp4(rooted(video) / f"ep{i:03d}_{'success' if success else 'fail'}.mp4", frames,
+                           env.control_hz / video_every)
+    finally:
+        runner.close()
+        if recorder is not None:
+            recorder.close()
+    ok = [r for r in results if r["success"]]
+    rate = len(ok) / max(len(results), 1)
+    mean_t = float(np.mean([r["seconds"] for r in ok])) if ok else float("nan")
+    typer.secho(f"success {len(ok)}/{len(results)} ({rate:.0%})" + (f", mean time {mean_t:.1f} s" if ok else ""),
+                fg="green" if rate >= 0.5 else "yellow" if ok else "red", bold=True)
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps({"policy": policy, "args": _policy_args(policy_arg), "name": runner.name,
+                                   "task": env.task.name, "task_version": env.bundle.version, "seconds": seconds,
+                                   "safety": safety, "success_rate": rate, "episodes": results}, indent=1))
 
 
 @app.command("import-mesh")

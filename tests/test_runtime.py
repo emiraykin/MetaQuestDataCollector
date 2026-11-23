@@ -363,3 +363,29 @@ def test_single_arm_goes_to_the_right_hand_and_hands_can_be_swapped(cfg):
     ticks(rt, 6, controllers())
     assert rt.arms == ["l", "r"] and rt.status()["task"] == "stack_two_blocks"
     rt.recorder.close()
+
+
+def test_rollout_runs_a_policy_headless_and_saves_replayable_takes(tmp_path):
+    import json
+    import shutil
+
+    from typer.testing import CliRunner
+
+    from xrcollect.cli import _policy_args, app
+
+    assert _policy_args(["checkpoint=out/x", "n_action_steps=50", "wiggle=0.1"]) == \
+        {"checkpoint": "out/x", "n_action_steps": 50, "wiggle": 0.1}
+    res = CliRunner().invoke(app, ["rollout", "xrcollect.policy:HoldRunner", "--policy-arg", "wiggle=0.2",
+                                   "--task", "tasks/stack_two_blocks", "--n", "2", "--seconds", "0.2",
+                                   "--save", str(tmp_path / "roll"), "--out", str(tmp_path / "r.json"),
+                                   *(["--video", str(tmp_path / "vid")] if shutil.which("ffmpeg") else [])])
+    assert res.exit_code == 0, res.output
+    out = json.loads((tmp_path / "r.json").read_text())
+    assert out["success_rate"] == 0.0 and [e["success"] for e in out["episodes"]] == [False, False]
+    assert out["args"] == {"wiggle": 0.2} and len({e["seed"] for e in out["episodes"]}) == 2
+    files = sorted((tmp_path / "roll").glob("*.hdf5"))
+    meta, data = read_episode(files[0])
+    assert len(files) == 2 and meta["source"] == "policy" and meta["operator"] == "hold"
+    assert (data["control/source"] == SOURCE_POLICY).all() and len(data["time"]) == 10
+    if shutil.which("ffmpeg"):
+        assert sorted(f.name for f in (tmp_path / "vid").iterdir()) == ["ep000_fail.mp4", "ep001_fail.mp4"]

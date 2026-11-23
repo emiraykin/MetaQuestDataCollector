@@ -37,6 +37,7 @@ uv run xrc tasks | view [task] | replay <ep.hdf5> | inspect <ep.hdf5> | resim <e
 uv run xrc validate-task tasks/<name> [--n 5] [--embodiment franka_single]   # scripted expert must reach success
 uv run xrc audit [--exclude ep.hdf5 --note why]
 uv run xrc export <name> [--exporter hdf5|lerobot] [--cameras a,b|none] [--fps 25] [--annotations] [--allow-mixed]
+uv run xrc rollout xrcollect.policies.lerobot:LeRobotRunner --policy-arg checkpoint=outputs/train/<run> --n 20   # success rate, headless
 uv run xrc import-mesh mug.obj kitchen/mug [--scale 0.001]   # -> objects/kitchen/mug.yaml (+ convex pieces)
 uv run xrc codegen [--check]            # regenerate protocol files from xrcollect/wire/schema.json
 uv run python -c "import gymnasium as gym, xrcollect.gym_env; gym.make('xrcollect/stack_cups-v0')"   # any task as a gym env
@@ -162,7 +163,7 @@ filter → physics → recorder) → binary pose frames back to the headset + JS
 - **Export** (`export/base.py`): `run_export` takes segments from `audit.select`, re-renders cameras
   (`scene/render.py`, matte, optional visual randomization) in each episode's own scene, refuses mixed task
   versions unless `allow_mixed`, flags constant channels. Exporters are plugins registered in `EXPORTERS`; all
-  LeRobot API stays in `export/lerobot.py`.
+  LeRobot API stays in `export/lerobot.py` (export) and `policies/lerobot.py` (running a checkpoint).
 - **Policy hook** (`policy.py`): `PolicyRunner` loaded lazily from `module:Class` / `file.py:Class`; the platform
   imports no ML library. Control modes teleop | policy | shared; while the policy drives the operator side is held
   at the current pose so a Grip takeover never jumps. Loading happens off the sim thread.
