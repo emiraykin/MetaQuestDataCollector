@@ -57,6 +57,13 @@ uv run lerobot-train \
   with 1.4 GB of GPU memory, so 100k steps take about 2 h 20 min.
 - **Running it in the background:** append `> outputs/logs/<run>.log 2>&1`, then check the loss with
   `grep eval_loss outputs/logs/<run>.log`.
+- **Training on, or resuming a stopped run:** start from a checkpoint's saved config; `--steps` is the new total.
+  The run continues in the same `--output_dir`, with the optimizer state and step count of that checkpoint:
+
+  ```bash
+  uv run lerobot-train --resume=true --steps=200000 \
+    --config_path=outputs/train/act_cups_v2_25fps/checkpoints/100000/pretrained_model/train_config.json
+  ```
 
 ### Reading the losses (ACT)
 
@@ -78,9 +85,24 @@ checkpoint in sim (next step).
 
 ```bash
 uv run xrc rollout xrcollect.policies.lerobot:LeRobotRunner \
-  --policy-arg checkpoint=outputs/train/act_cups_v2_25fps/checkpoints/040000 \
-  --n 20 --out outputs/eval/act_cups_v2_25fps/040000.json
+  --policy-arg checkpoint=outputs/train/act_cups_v2_25fps/checkpoints/100000 \
+  --policy-arg n_action_steps=50 \
+  --n 50 --out outputs/eval/act_cups_v2_25fps/100000.json
 ```
+
+It prints one line per episode and the rate at the end:
+
+```text
+act_cups_v2_25fps@100000 on stack_cups (version 806152417e3f62d3): 50 episodes, 40 s each
+    0  seed  384246851  fail      40.0 s  stages 0/1
+    4  seed  602975432  success   14.1 s  stages 1/1
+  ...
+success 25/50 (50%), mean time 18.9 s
+```
+
+`stages` is the furthest stage reached (a fail at 1/1 was stacked but never let go or came to rest); `mean time` is
+over the successful episodes. A warning that the policy "was trained on task versions ..." means the task changed
+since the export: the rollout still runs, but check that the change doesn't alter what the policy sees.
 
 - **What it does:** runs a policy runner headless, with no server or headset, on `--n` start layouts and prints
   success or failure per episode and the success rate.
@@ -106,81 +128,53 @@ To compare checkpoints:
 ```bash
 for c in 020000 040000 060000 080000 100000; do
   uv run xrc rollout xrcollect.policies.lerobot:LeRobotRunner \
-    --policy-arg checkpoint=outputs/train/act_cups_v2_25fps/checkpoints/$c \
-    --n 20 --out outputs/eval/act_cups_v2_25fps/$c.json
+    --policy-arg checkpoint=outputs/train/act_cups_v2_25fps/checkpoints/$c --policy-arg n_action_steps=50 \
+    --n 50 --out outputs/eval/act_cups_v2_25fps/$c.json
 done
 ```
 
-### Example: `act_cups_v2_25fps` (108 training episodes, ACT, 100k steps)
+To watch what a policy does, keep the episodes and videos of a run:
 
-| Checkpoint | 20k | 40k | 60k | 80k | 100k |
-| --- | --- | --- | --- | --- | --- |
-| `eval_loss` | 0.404 | 0.392 | 0.396 | 0.393 | 0.393 |
-| success (20 episodes) | 10% | 25% | 20% | 30% | 15% |
-| success (50 episodes) | 12% | 22% | **26%** | 18% | 20% |
-| success (50, `n_action_steps=50`) | 12% | 22% | 18% | 36% | **38%** |
-| success (50, `n_action_steps=20`) | 8% | 12% | 12% | 18% | 28% |
+```bash
+uv run xrc rollout xrcollect.policies.lerobot:LeRobotRunner \
+  --policy-arg checkpoint=outputs/train/act_cups_v2_25fps/checkpoints/100000 --policy-arg n_action_steps=50 \
+  --n 50 --save outputs/eval/best/episodes --video outputs/eval/best/videos
+uv run xrc replay outputs/eval/best/episodes/episode_000003.hdf5    # one rollout in the viewer
+uv run xrc serve --out outputs/eval/best/episodes                    # all of them in the Episodes tab
+```
 
-How much of each chunk to execute matters: over all five checkpoints, `n_action_steps=50` (a new chunk every 2 s)
-reached 63/250, the full chunk (100) 49/250 and `n_action_steps=20` 39/250; at 80k `n_action_steps=10` scored 0%.
-The gain from 50 is in the trained-out checkpoints: 80k + 100k went from 19/100 to 37/100 (p ≈ 0.005). Half a chunk
-re-plans often enough to recover from a missed grasp, while still executing long, smooth stretches. `eval_loss` hardly moves while the success rate ranges from 10% to 30%, which is why checkpoints are chosen by
-rollout. With 50 episodes, a ~20% rate is only known to about ±11%. So 40k–100k are indistinguishable here: the
-"best" checkpoint at 20 episodes (80k, 30%) was 18% at 50. The usual failures are a grasp that closes beside the cup, and a cup placed on the other one that doesn't
-quite trigger the stack check. More demonstrations would help most.
+The videos are named by result (`ep003_fail.mp4`), so `ls outputs/eval/best/videos/*_fail.mp4` lists the failures.
 
-### Example: 25 fps against 50 fps
+### Example: `act_cups_v2_25fps` (108 training episodes, ACT)
 
-The same takes exported at 50 fps (`cups_v2_50fps`) and trained with identical settings. Success over 50 episodes;
-"every" is the time between two predictions (`n_action_steps` / fps):
+Success over 50 episodes; "every" is the time between two predictions (`n_action_steps` / fps):
 
-| `n_action_steps` | 25 fps: every | 25 fps: success | 50 fps: every | 50 fps: success |
-| --- | --- | --- | --- | --- |
-| 100 | 4 s | 49/250 (19.6%) | **2 s** | **66/250 (26.4%)** |
-| 50 | **2 s** | **63/250 (25.2%)** | 1 s | 39/250 (15.6%) |
-| 20 | 0.8 s | 39/250 (15.6%) | 0.4 s | 8/250 (3.2%) |
-
-What counts is the time between predictions, not the frame rate: re-planning every 2 s is best at both rates and
-gives the same result; more often or less often is worse. At equal timing the 50 fps policy is no better, and its
-`eval_loss` (0.29 against 0.39) is lower only because a 100-step chunk spans 2 s instead of 4 s. Best single
-checkpoints: 38% (25 fps 100k at 50 steps, 50 fps 80k at 100 steps).
-
-### Example: training longer
-
-`act_cups_v2_25fps` resumed from 100k to 200k (`--config_path=<ckpt>/pretrained_model/train_config.json
---resume=true --steps=200000`), each checkpoint tested over 50 episodes at `n_action_steps=50`:
-
-| Checkpoint | 100k | 120k | 140k | 160k | 180k | 200k |
-| --- | --- | --- | --- | --- | --- | --- |
-| `eval_loss` | 0.393 | 0.394 | 0.392 | 0.391 | 0.390 | 0.390 |
-| success | 38% | 36% | 30% | 20% | 32% | 26% |
-
-The second 100k steps bought nothing: 120k–200k reached 72/250 (29%), against 37/100 for 80k + 100k. Training L1
-keeps falling, `eval_loss` stays flat, and success drifts within noise. With ~100 demonstrations the policy has
-learned what the data holds; more (or more varied) takes, or DAgger corrections in shared mode, are the next lever,
-not more steps.
-
-### Example: a wrong success check
-
-The numbers above were measured with a `stack_cups` check that took a cup turned clockwise about its own axis by more
-than ~36° for a tipped-over one (a sign error in its quaternion test), so cleanly nested cups often counted as
-failures; it also let a cup leaning 20–36° on the rim pass. The check now measures the tilt of each cup's axis
-(`params.stack.max_tilt_deg: 15`). The recorded takes were unaffected (no nested take was labelled failed): only
-the rollout rates were too low. Re-measured over 50 episodes:
-
-| Policy | old check | fixed check |
+| Policy | every | success |
 | --- | --- | --- |
-| 25 fps 100k, `n_action_steps=50` | 38%, 44% | **50%** |
-| 50 fps 80k, `n_action_steps=100` | 38%, 32% | 44% |
-| 25 fps 100k, `n_action_steps=100` | 20% | 34% |
-| 25 fps 120k, `n_action_steps=50` | 36% | 36% |
+| 25 fps, 100k, `n_action_steps=50` | 2 s | **50%** (47% over 100 episodes) |
+| 25 fps, 100k, `n_action_steps=100` | 4 s | 34% |
+| 25 fps, 120k, `n_action_steps=50` (resumed to 200k) | 2 s | 36% |
+| 50 fps (`cups_v2_50fps`, same settings), 80k, `n_action_steps=100` | 2 s | 44% |
 
-The ranking holds: 25 fps 100k with a new chunk every 2 s is the best policy. When a task's success check changes,
-re-run the rollouts: old rollout files replay with the check they were recorded with (each episode carries its
-own task), so re-scoring them needs the current task (`Env(load_bundle(task))` + `set_state`).
+- **How much of each chunk to run matters:** a new chunk every 2 s re-plans often enough to recover from a missed
+  grasp while still executing long, smooth stretches. The full 4 s chunk does worse.
+- **The frame rate doesn't:** at the same 2 s between predictions, 25 fps and 50 fps are within noise. The 50 fps
+  `eval_loss` is lower (0.29 against 0.39) only because a 100-step chunk spans 2 s instead of 4 s.
+- **Training longer doesn't help:** from 100k to 200k, training L1 kept falling (0.061 → 0.045) while `eval_loss`
+  stayed at 0.39 and the success rate did not rise. With ~100 demonstrations, more (or more varied) takes, or DAgger
+  corrections in shared mode, are the next lever, not more steps.
+- **`eval_loss` doesn't pick checkpoints:** it hardly moves between checkpoints whose success rates differ, so
+  choose by rollout.
+- **Failures:** usually a grasp that closes beside the cup, or a cup knocked over.
 
-Twenty episodes is a coarse measure: 9/20 and 12/20 are within noise of each other. Use 50 or more to decide
-between close checkpoints. GPU inference isn't bit-exact, so the same seed can end differently from run to run.
+**When a task's success check changes, re-run the rollouts.** An earlier `stack_cups` check counted a cup turned
+clockwise about its own axis as tipped over, which made every rate above look 5–15 points lower. Old rollout files
+replay with the check they were recorded with (each episode carries its own task), so re-scoring them needs the
+current task (`Env(load_bundle(task))` + `set_state`).
+
+Twenty episodes is a coarse measure: 9/20 and 12/20 are within noise of each other, and with 50 a rate near 50% is
+only known to about ±14%. Use 50 or more to decide between close checkpoints. GPU inference isn't bit-exact, so
+the same seed can end differently from run to run.
 
 ### Runner options (`LeRobotRunner`)
 
@@ -199,13 +193,44 @@ that the task version differs from the one it was trained on.
 
 ```bash
 uv run xrc serve --policy xrcollect.policies.lerobot:LeRobotRunner \
-  --policy-arg checkpoint=outputs/train/act_cups_v2_25fps/checkpoints/040000 --control shared
+  --policy-arg checkpoint=outputs/train/act_cups_v2_25fps/checkpoints/100000 --policy-arg n_action_steps=50 \
+  --control shared
 ```
 
 Or load it from the dashboard's Policy tab: ref `xrcollect.policies.lerobot:LeRobotRunner`, args
-`{"checkpoint": "outputs/train/act_cups_v2_25fps/checkpoints/040000"}`. In shared mode the policy drives until you
-press Grip. The steps you drive are recorded as operator steps, and the next export keeps only those, so your
-corrections become new training data (DAgger).
+`{"checkpoint": "outputs/train/act_cups_v2_25fps/checkpoints/100000", "n_action_steps": 50}`. In shared mode the
+policy drives until you press Grip. The steps you drive are recorded as operator steps, and the next export keeps
+only those, so your corrections become new training data (DAgger).
+
+## 6. Share on the Hugging Face Hub
+
+Log in once with a token that has write access (huggingface.co/settings/tokens), or through the browser:
+
+```bash
+uv run hf auth login
+```
+
+A dataset goes up with LeRobot's own upload, which also writes a dataset card and tags the LeRobot format version.
+The repo name doesn't have to match the export's local `repo_id`:
+
+```bash
+uv run python -c "from lerobot.datasets.lerobot_dataset import LeRobotDataset as D; \
+  D('<user>/cups_v2_25fps', root='data/exports/cups_v2_25fps').push_to_hub(private=True)"
+```
+
+It uploads `data/`, `meta/`, `videos/` and `xrcollect_manifest.json` (the runner needs the manifest). Others then
+load it with `LeRobotDataset('<user>/cups_v2_25fps')`. A trained model is the checkpoint's `pretrained_model`
+folder:
+
+```bash
+uv run hf upload <user>/act_cups_v2_25fps \
+  outputs/train/act_cups_v2_25fps/checkpoints/100000/pretrained_model --repo-type model --private
+```
+
+The runner takes local folders only: download a model with `uv run hf download <user>/act_cups_v2_25fps --local-dir
+models/act_cups`, then pass `checkpoint=models/act_cups` and the export it was trained on, `dataset=<local export
+folder>` (the path saved in its `train_config.json` is the trainer's).
+`private` keeps either repo visible to you only; change it on the Hub when you want to publish.
 
 ## How the runner matches training
 

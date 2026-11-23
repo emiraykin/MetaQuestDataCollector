@@ -47,8 +47,8 @@ moving a cup in the editor doesn't change where it starts. Edit `params` in `tas
 ```bash
 uv sync --extra lerobot --extra train          # once (brings torch); name every extra you want each time
 
-# Export to LeRobot (cup task cameras) -> data/exports/cups_v1
-uv run xrc export cups_v1 --exporter lerobot --cameras left,right,cam_wrist
+# Export to LeRobot (cup task cameras, 25 fps) -> data/exports/cups_v1
+uv run xrc export cups_v1 --exporter lerobot --cameras left,right,cam_wrist --fps 25
 
 # Look at episode 0 in Rerun (play the `timestamp` timeline)
 uv run lerobot-dataset-viz --repo-id xrcollect/cups_v1 --root data/exports/cups_v1 --episode-index 0
@@ -60,12 +60,13 @@ uv run lerobot-train --dataset.repo_id=xrcollect/cups_v1 --dataset.root=data/exp
   --batch_size=8 --steps=100000 --save_freq=20000 \
   --output_dir=outputs/train/act_cups_v1 --job_name=act_cups_v1
 
-# Success rate of a checkpoint on 20 fresh start layouts, headless
-uv run xrc rollout xrcollect.policies.lerobot:LeRobotRunner --policy-arg checkpoint=outputs/train/act_cups_v1 --n 20
+# Success rate of a checkpoint on 50 fresh start layouts, headless (n_action_steps=50: a new chunk every 2 s at 25 fps)
+uv run xrc rollout xrcollect.policies.lerobot:LeRobotRunner --policy-arg checkpoint=outputs/train/act_cups_v1 \
+  --policy-arg n_action_steps=50 --n 50 --video outputs/eval/act_cups_v1/videos
 ```
 
 Details: [Exporting](#exporting) (frame rate, viewing every episode at once), [Training a policy](#training-a-policy)
-and [docs/training.md](docs/training.md) (losses, validation split, comparing checkpoints).
+and [docs/training.md](docs/training.md) (losses, validation split, comparing checkpoints, resuming, Hub upload).
 
 <table>
   <tr>
@@ -377,6 +378,11 @@ bottom centre of its bounding box.
 Predicates must depend on the simulator state only, because replay, review and export recompute them from
 recorded states.
 
+Test the success check on the cases it must accept and reject, not only on the scripted expert: a nested cup turned
+either way about its axis, an object resting at an angle, one held in the air. A check that is too strict
+mislabels good takes and makes every policy rollout look worse; after fixing one, re-run the rollouts (rollout
+files keep the check they were recorded with).
+
 **Objects** live in a shared library, referenced as `asset:`. A box is a few lines:
 
 ```yaml
@@ -487,10 +493,11 @@ policy input normalized by ~0 blows up at run time. The `lerobot` exporter needs
 
 **Frame rate.** A dataset has one frame per control tick, so its fps is the scene's `physics.control_hz` (50 by
 default; physics itself steps at 500 Hz). Images are rendered per frame from that frame's state, so cameras and
-joints always line up. To match a robot that runs its policy at another rate, export with `--fps`: `--fps 25` keeps every second step of a 50 Hz recording, with each frame's action the last target before
-the next frame. The rate must divide the recording's (50 → 50, 25, 10, ...). `LeRobotRunner` reads it from the
-manifest and asks the policy at that rate. Recording at another rate instead means setting `control_hz` in the
-scene, which makes a new task version; don't mix those episodes.
+joints always line up. To match a robot that runs its policy at another rate, export with `--fps`: `--fps 25`
+keeps every second step of a 50 Hz recording, with each frame's action the last target before the next frame. The
+rate must divide the recording's (50 → 50, 25, 10, ...). `LeRobotRunner` reads it from the manifest and asks the
+policy at that rate. Recording at another rate instead means setting `control_hz` in the scene, which makes a new
+task version; don't mix those episodes.
 
 ### Looking at a LeRobot export
 
@@ -538,17 +545,52 @@ uv run lerobot-train \
 - As a rough guide, on an 8 GB laptop GPU with three 224×224 cameras a step at batch size 8 took about 0.1 s and
   under 2 GB of GPU memory.
 
-Then measure the success rate of each checkpoint in sim, headless, on start layouts that are never in the recorded
-data and are the same for every run:
+To train further, or resume a stopped run, start from a checkpoint's config with the new total of steps:
+
+```bash
+uv run lerobot-train --resume=true --steps=200000 \
+  --config_path=outputs/train/act_my_set/checkpoints/100000/pretrained_model/train_config.json
+```
+
+### Evaluating in sim
+
+`eval_loss` can't tell whether a policy works, so measure the success rate of each checkpoint in sim. `xrc rollout`
+runs it headless (no server, no headset) through the same safety filter and control step as a live session, on
+start layouts that are never in the recorded data and are the same for every run (here a 25 fps export):
 
 ```bash
 uv run xrc rollout xrcollect.policies.lerobot:LeRobotRunner \
-  --policy-arg checkpoint=outputs/train/act_my_set/checkpoints/040000 \
-  --n 20 --out outputs/eval/act_my_set/040000.json      # --save <dir>: episode files, --video <dir>: MP4s
+  --policy-arg checkpoint=outputs/train/act_my_set/checkpoints/100000 --policy-arg n_action_steps=50 \
+  --n 50 --out outputs/eval/act_my_set/100000.json \
+  --save outputs/eval/act_my_set/episodes --video outputs/eval/act_my_set/videos
 ```
 
-What each loss means, how to read the held-out loss, and the runner's options are in
-[docs/training.md](docs/training.md).
+- **Output:** one line per episode (`success` / `fail`, time, furthest stage), then `success 25/50 (50%)`.
+  `--out` writes the same per episode as JSON.
+- **Watching:** `--video` writes one MP4 per episode named by result (`ep003_fail.mp4`); `--save` writes episode
+  files: `uv run xrc replay <file>`, or `uv run xrc serve --out <dir>` to browse them in the Episodes tab.
+- **`n_action_steps`:** ACT runs this many actions of each predicted chunk before predicting again. Re-planning
+  every ~2 s (`50` at 25 fps, the default `100` at 50 fps) did best on the cup task; the full 4 s chunk at 25 fps
+  did markedly worse.
+- **How many episodes:** 20 is a rough look; use 50 or more to compare checkpoints (a rate near 50% over 50
+  episodes is ±14%). GPU inference isn't bit-exact, so reruns differ slightly.
+- **For reference:** ACT trained on 108 cup-stacking demonstrations reaches 47–50% (25 fps, 100k steps). Training
+  to 200k didn't improve it; more demonstrations, or corrections recorded in shared mode, are what help.
+
+Losses, the runner's options and a worked comparison of checkpoints: [docs/training.md](docs/training.md).
+
+### Sharing on the Hugging Face Hub
+
+```bash
+uv run hf auth login     # once, with a write token
+uv run python -c "from lerobot.datasets.lerobot_dataset import LeRobotDataset as D; \
+  D('<user>/my_set', root='data/exports/my_set').push_to_hub(private=True)"
+uv run hf upload <user>/act_my_set \
+  outputs/train/act_my_set/checkpoints/100000/pretrained_model --repo-type model --private
+```
+
+The dataset upload includes `xrcollect_manifest.json`, which the runner needs. Details in
+[docs/training.md](docs/training.md#6-share-on-the-hugging-face-hub).
 
 ## Driving with a policy
 
@@ -559,7 +601,7 @@ inputs its export was built with. Load a runner at start-up, or from the Policy 
 
 ```bash
 uv run xrc serve --policy xrcollect.policies.lerobot:LeRobotRunner \
-  --policy-arg checkpoint=outputs/train/act_my_set --control shared
+  --policy-arg checkpoint=outputs/train/act_my_set --policy-arg n_action_steps=50 --control shared   # 25 fps export
 uv run xrc serve --policy my_pkg.policies:Runner              # your own; or path/to/file.py:Runner
 ```
 
