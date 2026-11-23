@@ -482,8 +482,10 @@ policy input normalized by ~0 blows up at run time. The `lerobot` exporter needs
 
 **Frame rate.** A dataset has one frame per control tick, so its fps is the scene's `physics.control_hz` (50 by
 default; physics itself steps at 500 Hz). Images are rendered per frame from that frame's state, so cameras and
-joints always line up. To match a robot that runs its policy at another rate (e.g. 25 fps), set `control_hz` in the
-scene before recording: episodes recorded at different rates are different task versions and should not be mixed.
+joints always line up. To match a robot that runs its policy at another rate, export with `--fps`: `--fps 25` keeps every second step of a 50 Hz recording, with each frame's action the last target before
+the next frame. The rate must divide the recording's (50 → 50, 25, 10, ...). `LeRobotRunner` reads it from the
+manifest and asks the policy at that rate. Recording at another rate instead means setting `control_hz` in the
+scene, which makes a new task version; don't mix those episodes.
 
 ### Looking at a LeRobot export
 
@@ -583,7 +585,7 @@ with Grip; recorded corrections and demonstrations then feed back into training.
 | `xrc validate-task <task>` | the scripted expert must reach success (`--n`, `--embodiment`, `--save`) |
 | `xrc replay` / `inspect` / `resim <ep.hdf5>` | watch / summarize / bit-exact re-simulation check |
 | `xrc audit` | dataset verdicts; `--exclude ep.hdf5 --note why` |
-| `xrc export <name>` | build a dataset (`--exporter`, `--cameras`, `--annotations`, `--allow-mixed`) |
+| `xrc export <name>` | build a dataset (`--exporter`, `--cameras`, `--fps`, `--annotations`, `--allow-mixed`) |
 | `xrc import-mesh <file> <asset>` | mesh → object library entry |
 | `xrc codegen [--check]` | regenerate the wire-protocol files |
 
